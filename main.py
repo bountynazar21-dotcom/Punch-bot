@@ -32,7 +32,7 @@ async def _create_bot() -> Bot:
     load_dotenv()
     token = os.getenv("BOT_TOKEN")
     if not token:
-        raise RuntimeError("❌ BOT_TOKEN відсутній. Додай його в .env (локально) або Railway Variables (прод).")
+        raise RuntimeError("❌ BOT_TOKEN відсутніІй. Додай його в .env (локально) або Railway Variables (прод).")
 
     return Bot(
         token=token,

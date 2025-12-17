@@ -49,7 +49,7 @@ async def handle_receipt_photo(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id if message.photo else None
     caption = message.caption or ""
     await state.update_data(photo_id=photo_id, caption=caption)
-    await message.answer("📸 Бачу чек — напиши, будь ласка, своє ім’я ✍️")
+    await message.answer("📸 Бачу чек — напиши, будь ласка, своє ім’я та бажання ✍️")
     await state.set_state(Reg.waiting_for_name)
 
 

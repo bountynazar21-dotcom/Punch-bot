@@ -57,7 +57,7 @@ async def handle_receipt_photo(message: Message, state: FSMContext):
 async def handle_name(message: Message, state: FSMContext):
     name = (message.text or "").strip()
     if not name:
-        return await message.answer("Напиши ім’я текстом, будь ласка ✍️")
+        return await message.answer("Напиши ім’я , та бажання текстом, будь ласка ✍️")
     await state.update_data(full_name=name)
 
     # клавіша для контакту (якщо зробив keyboards/phone.py)
@@ -68,7 +68,7 @@ async def handle_name(message: Message, state: FSMContext):
         kb = None
 
     await message.answer(
-        "📱 Тепер надішли номер телефону (текстом, напр. +380...) або натисни кнопку нижче ☎️",
+        "📱 Тепер надішли номер телефону (текстом, +380...) або натисни кнопку нижче ☎️",
         reply_markup=kb
     )
     await state.set_state(Reg.waiting_for_phone)
@@ -76,7 +76,7 @@ async def handle_name(message: Message, state: FSMContext):
 
 async def _ask_store(message: Message, state: FSMContext, phone: str):
     await state.update_data(phone=phone)
-    await message.answer("🏪 Вкажи, будь ласка, <b>номер магазину</b> (наприклад: 12)", parse_mode="HTML")
+    await message.answer("🏪 Вкажи, будь ласка, <b>номер магазину</b> (наприклад: 8)", parse_mode="HTML")
     await state.set_state(Reg.waiting_for_store)
 
 
@@ -101,7 +101,7 @@ async def handle_store(message: Message, state: FSMContext):
 
     # проста валідація: тільки цифри
     if not raw.isdigit():
-        return await message.answer("Потрібен саме <b>номер</b> магазину цифрами 😉 (приклад: 12)", parse_mode="HTML")
+        return await message.answer("Потрібен саме <b>номер</b> магазину цифрами 😉 (приклад: 8 )", parse_mode="HTML")
 
     store_no = int(raw)
     await _finalize_registration(message, state, store_no)

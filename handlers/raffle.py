@@ -8,11 +8,12 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from db import save_participant
+from db import add_participant  # ✅ важливо: тепер пишемо tg_user_id + store_no
 
 # --- опційний імпорт Google Sheet (якщо є gs.py) ---
 try:
-    from gs import append_participant_row  # (username, full_name, phone, row_id)
+    # якщо хочеш ще й магазин в таблицю — скажеш, я піджену gs.py під це
+    from gs import append_participant_row  # (username, full_name, phone, row_id)  (legacy)
     _GS_AVAILABLE = True
 except Exception:
     _GS_AVAILABLE = False
@@ -27,6 +28,7 @@ ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x]
 class Reg(StatesGroup):
     waiting_for_name = State()
     waiting_for_phone = State()
+    waiting_for_store = State()  # ✅ новий крок
 
 PHONE_RE = re.compile(r"^\+?\d[\d\s\-\(\)]{6,}$")
 
@@ -72,10 +74,16 @@ async def handle_name(message: Message, state: FSMContext):
     await state.set_state(Reg.waiting_for_phone)
 
 
+async def _ask_store(message: Message, state: FSMContext, phone: str):
+    await state.update_data(phone=phone)
+    await message.answer("🏪 Вкажи, будь ласка, <b>номер магазину</b> (наприклад: 12)", parse_mode="HTML")
+    await state.set_state(Reg.waiting_for_store)
+
+
 @router.message(Reg.waiting_for_phone, F.contact)
 async def handle_phone_contact(message: Message, state: FSMContext):
     phone = _clean_phone(message.contact.phone_number)
-    await _finalize_registration(message, state, phone)
+    await _ask_store(message, state, phone)
 
 
 @router.message(Reg.waiting_for_phone, F.text)
@@ -84,35 +92,52 @@ async def handle_phone_text(message: Message, state: FSMContext):
     if not PHONE_RE.match(text):
         return await message.answer("Кинь, будь ласка, коректний номер (приклад: +380XXXXXXXXX) або натисни кнопку 📱")
     phone = _clean_phone(text)
-    await _finalize_registration(message, state, phone)
+    await _ask_store(message, state, phone)
 
 
-async def _finalize_registration(message: Message, state: FSMContext, phone: str):
+@router.message(Reg.waiting_for_store, F.text)
+async def handle_store(message: Message, state: FSMContext):
+    raw = (message.text or "").strip()
+
+    # проста валідація: тільки цифри
+    if not raw.isdigit():
+        return await message.answer("Потрібен саме <b>номер</b> магазину цифрами 😉 (приклад: 12)", parse_mode="HTML")
+
+    store_no = int(raw)
+    await _finalize_registration(message, state, store_no)
+
+
+async def _finalize_registration(message: Message, state: FSMContext, store_no: int):
     """
     Завершуємо: пишемо в БД, (опційно) у Google Sheet, шлемо адмінам алерт.
     """
     data = await state.get_data()
     full_name = data.get("full_name") or "—"
     photo_id = data.get("photo_id")
-    username = message.from_user.username or "—"
+    phone = data.get("phone") or ""
 
-    # 1) зберегти в БД
+    username = message.from_user.username or ""
+    tg_user_id = message.from_user.id
+
+    # 1) зберегти в БД (✅ тепер є tg_user_id і store_no)
     try:
-        row_id = save_participant(
-            username=username,
+        row_id = add_participant(
+            tg_user_id=tg_user_id,
+            username=username or "—",
             full_name=full_name,
             phone=phone,
-            photo_id=photo_id
+            photo_id=photo_id,
+            store_no=store_no
         )
     except Exception as e:
         await message.answer(f"⚠️ Помилка збереження: {e}")
         return
 
     # 2) Google Sheet (опц., якщо підключено)
+    # Якщо хочеш, щоб в gs теж був store_no — скажеш, я оновлю gs.py
     if _GS_AVAILABLE:
         try:
-            append_participant_row(f"@{username}" if username and username != "—" else "",
-                                   full_name, phone, row_id)
+            append_participant_row(f"@{username}" if username else "", full_name, phone, row_id)
         except Exception:
             pass  # не блокуємо флоу
 
@@ -124,8 +149,9 @@ async def _finalize_registration(message: Message, state: FSMContext, phone: str
         caption = (
             "🆕 <b>Нова реєстрація</b>\n"
             f"№: <b>{row_id}</b>\n"
+            f"🏪 Магазин: <b>{store_no}</b>\n"
             f"👤 Ім’я: {full_name}\n"
-            f"🧑‍💻 Telegram: {_spoil('@' + username if username and username != '—' else '—')}\n"
+            f"🧑‍💻 Telegram: {_spoil('@' + username if username else '—')}\n"
             f"📞 Телефон: {_spoil(phone)}"
         )
         for admin_id in ADMIN_IDS:
@@ -135,7 +161,6 @@ async def _finalize_registration(message: Message, state: FSMContext, phone: str
                 else:
                     await message.bot.send_message(admin_id, caption, parse_mode="HTML")
             except Exception:
-                # не валимо флоу, якщо комусь із адмінів не відправилось
                 pass
 
     # 5) кінець FSM

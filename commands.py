@@ -18,6 +18,11 @@ ADMIN_COMMANDS = [
     BotCommand(command="ping",          description="Перевірка бота (pong)"),
     BotCommand(command="version",       description="Версія бота"),
     BotCommand(command="stats",         description="Статистика (БД + Google Sheet)"),
+
+    # ✅ магазини
+    BotCommand(command="stores",        description="Магазини + кількість реєстрацій"),
+    BotCommand(command="store_add",     description="Додати/оновити магазин: /store_add 12 Назва"),
+
     BotCommand(command="export",        description="Експорт учасників у XLSX"),
     BotCommand(command="backup",        description="Бекап файлу БД"),
     BotCommand(command="clear",         description="Очистити БД та Google Sheet"),
@@ -26,7 +31,9 @@ ADMIN_COMMANDS = [
     BotCommand(command="random_winner", description="Рандомний переможець"),
     BotCommand(command="winners",       description="Список переможців"),
     BotCommand(command="broadcast",     description="Розсилка всім учасникам"),
-    BotCommand(command="help",          description="Список адмін-команд"),
+
+    # ✅ правильний help для адмінів
+    BotCommand(command="help_admin",    description="Список адмін-команд"),
 ]
 
 async def setup_bot_commands(bot):

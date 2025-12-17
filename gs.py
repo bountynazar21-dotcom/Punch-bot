@@ -15,11 +15,14 @@ SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "").strip()
 SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "Rozigrash").strip()
 WORKSHEET_TITLE = os.getenv("GOOGLE_WORKSHEET_TITLE", "Лист1").strip()
 
-HEADER: Tuple[str, ...] = ("№", "Telegram user", "Ім’я", "Номер телефону", "Дата")
+# ✅ додали "Магазин №"
+HEADER: Tuple[str, ...] = ("№", "Telegram user", "Ім’я", "Номер телефону", "Магазин №", "Дата")
+
 
 def _client() -> gspread.Client:
     creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
     return gspread.authorize(creds)
+
 
 def _open_spreadsheet(gc: gspread.Client):
     """Пробуємо спочатку відкрити по ID, якщо нема — по name."""
@@ -27,16 +30,43 @@ def _open_spreadsheet(gc: gspread.Client):
         return gc.open_by_key(SHEET_ID)
     return gc.open(SHEET_NAME)
 
+
 def _open_ws(sh):
     try:
         return sh.worksheet(WORKSHEET_TITLE)
     except gspread.WorksheetNotFound:
+        # cols=10 щоб точно вистачило під майбутні колонки
         return sh.add_worksheet(title=WORKSHEET_TITLE, rows=1000, cols=10)
 
-def _ensure_header(ws) -> None:
-    vals = ws.get_values("A1:E1")
-    if not vals or len(vals[0]) < len(HEADER) or any(vals[0][i] != HEADER[i] for i in range(len(HEADER))):
-        ws.update("A1:E1", [list(HEADER)])
+
+def _a1_range_for_header(headers: Tuple[str, ...]) -> str:
+    # A1 + (len(headers) колонок)
+    # 1->A, 2->B, ..., 26->Z, 27->AA ...
+    n = len(headers)
+    def col_letter(num: int) -> str:
+        s = ""
+        while num:
+            num, r = divmod(num - 1, 26)
+            s = chr(65 + r) + s
+        return s
+    last = col_letter(n)
+    return f"A1:{last}1"
+
+
+def _ensure_header(ws, headers: Tuple[str, ...] = HEADER) -> None:
+    rng = _a1_range_for_header(headers)
+    vals = ws.get_values(rng)
+
+    need = list(headers)
+    if not vals or not vals[0]:
+        ws.update(rng, [need])
+        return
+
+    row = vals[0]
+    # якщо не співпало по довжині або по значеннях — перезаписуємо хедер
+    if len(row) < len(need) or any((row[i] if i < len(row) else "") != need[i] for i in range(len(need))):
+        ws.update(rng, [need])
+
 
 def _next_seq(ws) -> int:
     col = ws.col_values(1)[1:]  # без заголовка
@@ -48,15 +78,32 @@ def _next_seq(ws) -> int:
             pass
     return seq + 1
 
-def append_participant_row(username: str, full_name: str, phone: str, row_id: int | None = None) -> int:
+
+def append_participant_row(
+    username: str,
+    full_name: str,
+    phone: str,
+    store_no: int | None = None,
+    row_id: int | None = None
+) -> int:
+    """
+    ✅ Тепер пишемо і store_no.
+    row_id лишив як опційний, щоб не ламати старі виклики.
+    """
     gc = _client()
     sh = _open_spreadsheet(gc)
     ws = _open_ws(sh)
     _ensure_header(ws)
+
     seq = _next_seq(ws)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ws.append_row([seq, username or "", full_name or "", phone or "", now], value_input_option="USER_ENTERED")
+
+    ws.append_row(
+        [seq, username or "", full_name or "", phone or "", (store_no if store_no is not None else ""), now],
+        value_input_option="USER_ENTERED"
+    )
     return seq
+
 
 def sheet_row_count() -> int:
     gc = _client()
@@ -64,18 +111,24 @@ def sheet_row_count() -> int:
     ws = _open_ws(sh)
     return len([x for x in ws.col_values(1) if str(x).strip()])
 
+
 def clear_gsheet_keep_header(headers: Tuple[str, ...] = HEADER) -> tuple[bool, dict | str]:
     try:
         gc = _client()
         sh = _open_spreadsheet(gc)
         ws = _open_ws(sh)
+
         before = max(len(ws.col_values(1)) - 1, 0)
         ws.clear()
-        ws.update("A1:E1", [list(headers)])
+
+        rng = _a1_range_for_header(headers)
+        ws.update(rng, [list(headers)])
+
         after = max(len(ws.col_values(1)) - 1, 0)
         return True, {"before": before, "after": after}
     except Exception as e:
         return False, str(e)
+
 
 def gs_diagnostics() -> dict:
     """Повертає детальний стан для логів/команди /gs_diag."""
@@ -99,3 +152,4 @@ def gs_diagnostics() -> dict:
     except Exception as e:
         info["error"] = str(e)
     return info
+

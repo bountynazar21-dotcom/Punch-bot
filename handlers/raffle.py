@@ -49,7 +49,7 @@ async def handle_receipt_photo(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id if message.photo else None
     caption = message.caption or ""
     await state.update_data(photo_id=photo_id, caption=caption)
-    await message.answer("📸 Бачу чек — напиши, будь ласка, своє ім’я та бажання ✍️")
+    await message.answer("📸 Бачу чек — напиши, будь ласка, своє ім’я  ✍️")
     await state.set_state(Reg.waiting_for_name)
 
 
@@ -57,7 +57,7 @@ async def handle_receipt_photo(message: Message, state: FSMContext):
 async def handle_name(message: Message, state: FSMContext):
     name = (message.text or "").strip()
     if not name:
-        return await message.answer("Напиши ім’я , та бажання текстом, будь ласка ✍️")
+        return await message.answer("Напиши ім’я будь ласка ✍️")
     await state.update_data(full_name=name)
 
     # клавіша для контакту (якщо зробив keyboards/phone.py)

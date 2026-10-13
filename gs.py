@@ -16,7 +16,7 @@ SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "Rozigrash").strip()
 WORKSHEET_TITLE = os.getenv("GOOGLE_WORKSHEET_TITLE", "Лист1").strip()
 
 # ✅ додали "Магазин №"
-HEADER: Tuple[str, ...] = ("№", "Telegram user", "Ім’я", "Номер телефону", "Магазин №", "Дата")
+HEADER: Tuple[str, ...] = ("№", "Telegram user", "Ім’я", "Номер телефону", "Магазин №", "Дата", "Instagram")
 
 
 def _client() -> gspread.Client:
@@ -54,6 +54,8 @@ def _a1_range_for_header(headers: Tuple[str, ...]) -> str:
 
 
 def _ensure_header(ws, headers: Tuple[str, ...] = HEADER) -> None:
+    if ws.col_count < len(headers):
+        ws.add_cols(len(headers) - ws.col_count)
     rng = _a1_range_for_header(headers)
     vals = ws.get_values(rng)
 
@@ -84,7 +86,8 @@ def append_participant_row(
     full_name: str,
     phone: str,
     store_no: int | None = None,
-    row_id: int | None = None
+    row_id: int | None = None,
+    *, instagram: str | None = None
 ) -> int:
     """
     ✅ Тепер пишемо і store_no.
@@ -99,8 +102,8 @@ def append_participant_row(
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     ws.append_row(
-        [seq, username or "", full_name or "", phone or "", (store_no if store_no is not None else ""), now],
-        value_input_option="USER_ENTERED"
+        [seq, username or "", full_name or "", str(phone or ""), (store_no if store_no is not None else ""), now, instagram or ""],
+        value_input_option="RAW"
     )
     return seq
 

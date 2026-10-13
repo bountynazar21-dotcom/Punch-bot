@@ -36,8 +36,25 @@ def init_db():
         """)
 
         # ✅ міграція: додаємо store_no, якщо його ще нема
-        if not _column_exists(cur, "participants", "store_no"):
-            cur.execute("ALTER TABLE participants ADD COLUMN store_no INTEGER")
+        for column, column_type in (
+            ("tg_user_id", "INTEGER"),
+            ("full_name", "TEXT"),
+            ("photo_id", "TEXT"),
+            ("store_no", "INTEGER"),
+            ("instagram", "TEXT"),
+        ):
+            if not _column_exists(cur, "participants", column):
+                cur.execute(f"ALTER TABLE participants ADD COLUMN {column} {column_type}")
+        for old, new in (
+            ("tg_id", "tg_user_id"),
+            ("name", "full_name"),
+            ("receipt_photo_id", "photo_id"),
+        ):
+            if _column_exists(cur, "participants", old):
+                cur.execute(
+                    f"UPDATE participants SET {new} = {old} "
+                    f"WHERE {new} IS NULL AND {old} IS NOT NULL"
+                )
 
         # rules
         cur.execute("""
@@ -89,14 +106,14 @@ def save_participant(username: str, full_name: str, phone: str, photo_id: str = 
         return cur.lastrowid
 
 
-def add_participant(tg_user_id: int, username: str, full_name: str, phone: str, photo_id: str = None, store_no: int = None):
+def add_participant(tg_user_id: int, username: str, full_name: str, phone: str, photo_id: str = None, store_no: int = None, *, instagram: str = None):
     """Основний метод реєстрації: зберігає tg_user_id + store_no"""
     with _connect() as conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO participants (tg_user_id, username, full_name, phone, photo_id, store_no)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (tg_user_id, username, full_name, phone, photo_id, store_no))
+            INSERT INTO participants (tg_user_id, username, full_name, phone, photo_id, store_no, instagram, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (tg_user_id, username, full_name, phone, photo_id, store_no, instagram))
         conn.commit()
         return cur.lastrowid
 
@@ -111,6 +128,14 @@ def get_participants():
         """)
         return cur.fetchall()
 
+
+def get_participants_with_instagram():
+    with _connect() as conn:
+        return conn.execute("""
+            SELECT id, tg_user_id, username, full_name, phone, photo_id,
+                   store_no, created_at, instagram
+            FROM participants ORDER BY id ASC
+        """).fetchall()
 
 # ==========================================
 #   Підрахунок кількості учасників

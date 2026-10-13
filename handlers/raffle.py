@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -28,7 +28,8 @@ ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x]
 class Reg(StatesGroup):
     waiting_for_name = State()
     waiting_for_phone = State()
-    waiting_for_store = State()  # ✅ новий крок
+    waiting_for_store = State()
+    waiting_for_instagram = State()
 
 PHONE_RE = re.compile(r"^\+?\d[\d\s\-\(\)]{6,}$")
 
@@ -38,6 +39,19 @@ def _clean_phone(x: str) -> str:
 def _spoil(text: str | None) -> str:
     t = (text or "").strip()
     return f"<tg-spoiler>{t}</tg-spoiler>" if t else "—"
+
+def _normalize_instagram(value: str) -> str | None:
+    text = (value or "").strip()
+    text = re.sub(
+        r"^(?:https?://)?(?:www\.)?instagram\.com/",
+        "", text, flags=re.I
+    )
+    text = text.split("?")[0].strip("/").lstrip("@")
+    valid = re.fullmatch(
+        r"[A-Za-z0-9_](?:[A-Za-z0-9._]{0,28}[A-Za-z0-9_])?",
+        text
+    )
+    return "@" + text if valid and ".." not in text else None
 
 # ===== FLOW =====
 
@@ -76,7 +90,7 @@ async def handle_name(message: Message, state: FSMContext):
 
 async def _ask_store(message: Message, state: FSMContext, phone: str):
     await state.update_data(phone=phone)
-    await message.answer("🏪 Вкажи, будь ласка, <b>номер магазину</b> (наприклад: 8)", parse_mode="HTML")
+    await message.answer("🏪 Вкажи, будь ласка, <b>номер магазину</b> (наприклад: 8)", parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
     await state.set_state(Reg.waiting_for_store)
 
 
@@ -104,7 +118,25 @@ async def handle_store(message: Message, state: FSMContext):
         return await message.answer("Потрібен саме <b>номер</b> магазину цифрами 😉 (приклад: 8 )", parse_mode="HTML")
 
     store_no = int(raw)
-    await _finalize_registration(message, state, store_no)
+    await state.update_data(store_no=store_no)
+    await message.answer(
+        "📸 Напиши Instagram: <code>@nickname</code> або посилання на профіль."
+    )
+    await state.set_state(Reg.waiting_for_instagram)
+
+
+@router.message(Reg.waiting_for_instagram, F.text)
+async def handle_instagram(message: Message, state: FSMContext):
+    instagram = _normalize_instagram(message.text or "")
+    if not instagram:
+        return await message.answer(
+            "⚠️ Некоректний Instagram. Приклад: @nickname"
+        )
+    await state.update_data(instagram=instagram)
+    data = await state.get_data()
+    await _finalize_registration(
+        message, state, int(data["store_no"])
+    )
 
 
 async def _finalize_registration(message: Message, state: FSMContext, store_no: int):
@@ -115,6 +147,7 @@ async def _finalize_registration(message: Message, state: FSMContext, store_no: 
     full_name = data.get("full_name") or "—"
     photo_id = data.get("photo_id")
     phone = data.get("phone") or ""
+    instagram = data.get("instagram") or ""
 
     username = message.from_user.username or ""
     tg_user_id = message.from_user.id
@@ -127,7 +160,8 @@ async def _finalize_registration(message: Message, state: FSMContext, store_no: 
             full_name=full_name,
             phone=phone,
             photo_id=photo_id,
-            store_no=store_no
+            store_no=store_no,
+            instagram=instagram
         )
     except Exception as e:
         await message.answer(f"⚠️ Помилка збереження: {e}")
@@ -137,7 +171,7 @@ async def _finalize_registration(message: Message, state: FSMContext, store_no: 
     # Якщо хочеш, щоб в gs теж був store_no — скажеш, я оновлю gs.py
     if _GS_AVAILABLE:
         try:
-            append_participant_row(f"@{username}" if username else "", full_name, phone, row_id)
+            append_participant_row(username=f"@{username}" if username else "", full_name=full_name, phone=phone, store_no=store_no, row_id=row_id, instagram=instagram)
         except Exception:
             pass  # не блокуємо флоу
 
@@ -152,7 +186,8 @@ async def _finalize_registration(message: Message, state: FSMContext, store_no: 
             f"🏪 Магазин: <b>{store_no}</b>\n"
             f"👤 Ім’я: {full_name}\n"
             f"🧑‍💻 Telegram: {_spoil('@' + username if username else '—')}\n"
-            f"📞 Телефон: {_spoil(phone)}"
+            f"📞 Телефон: {_spoil(phone)}\n"
+            f"📸 Instagram: {_spoil(instagram)}"
         )
         for admin_id in ADMIN_IDS:
             try:

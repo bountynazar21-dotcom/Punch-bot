@@ -12,7 +12,7 @@ from aiogram.types import Message, BufferedInputFile
 from aiogram.utils.text_decorations import html_decoration as hd
 
 from db import (
-    get_participants, clear_tables, table_counts, DB_PATH,
+    get_participants_with_instagram, clear_tables, table_counts, DB_PATH,
     count_participants, count_participants_today,
     get_all_user_ids, pick_random_winner, save_winner, get_winners,
     set_rules, get_rules,
@@ -120,14 +120,14 @@ async def export_cmd(m: Message):
     if not is_admin(m.from_user.id):
         return await m.answer("🚫 Тільки для адмінів.")
 
-    rows = get_participants()
+    rows = get_participants_with_instagram()
     cleaned_rows = []
-    for (pid, tg_user_id, username, full_name, phone, photo_id, store_no, created_at) in rows:
-        cleaned_rows.append([pid, tg_user_id, username, full_name, phone, store_no, created_at])
+    for (pid, tg_user_id, username, full_name, phone, photo_id, store_no, created_at, instagram) in rows:
+        cleaned_rows.append([pid, tg_user_id, username, full_name, str(phone or ""), store_no, created_at, instagram or ""])
 
     df = pd.DataFrame(
         cleaned_rows,
-        columns=["№", "tg_user_id", "Telegram", "Ім’я", "Телефон", "Магазин №", "Дата"]
+        columns=["№", "tg_user_id", "Telegram", "Ім’я", "Телефон", "Магазин №", "Дата", "Instagram"]
     )
 
     buf = io.BytesIO()
@@ -157,7 +157,7 @@ async def clear_cmd(m: Message):
     p_left, r_left, w_left = table_counts()
 
     # ✅ 6 колонок
-    headers = ("№", "Telegram user", "Ім’я", "Номер телефону", "Магазин №", "Дата")
+    headers = ("№", "Telegram user", "Ім’я", "Номер телефону", "Магазин №", "Дата", "Instagram")
     ok, gs_info = clear_gsheet_keep_header(headers=headers)
     gs_line = (
         f"Google Sheet: before={gs_info['before']}, after={gs_info['after']}"
@@ -274,7 +274,7 @@ async def gs_clear_cmd(m: Message):
     if not is_admin(m.from_user.id):
         return await m.answer("🚫 Тільки для адмінів.")
     # ✅ 6 колонок
-    headers = ("№", "Telegram user", "Ім’я", "Номер телефону", "Магазин №", "Дата")
+    headers = ("№", "Telegram user", "Ім’я", "Номер телефону", "Магазин №", "Дата", "Instagram")
     ok, info = clear_gsheet_keep_header(headers=headers)
     if ok:
         await m.answer(f"🧽 GS очищено: було {info['before']}, стало {info['after']}.")
